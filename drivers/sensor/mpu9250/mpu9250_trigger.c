@@ -144,8 +144,9 @@ int mpu9250_init_interrupt(const struct device *dev)
 	}
 
 	/* enable data ready interrupt */
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_INT_EN,
-				    MPU9250_DRDY_EN);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_INT_EN, MPU9250_DRDY_EN);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_INT_EN,
+	// 			    MPU9250_DRDY_EN);
 	if (ret < 0) {
 		LOG_ERR("Failed to enable data ready interrupt.");
 		return ret;

@@ -14,6 +14,26 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 
+/** @addtogroup  Interfaces_Functions
+  * @brief       This section provide a set of functions used to read and
+  *              write a generic register of the device.
+  *              MANDATORY: return 0 -> no Error.
+  * @{
+  *
+  */
+
+typedef int32_t (*mpudev_write_ptr)(const void *, uint8_t, const uint8_t *, uint16_t);
+typedef int32_t (*mpudev_read_ptr)(const void *, uint8_t, uint8_t *, uint16_t);
+
+typedef struct
+{
+  /** Component mandatory fields **/
+  mpudev_write_ptr  write_reg;
+  mpudev_read_ptr   read_reg;
+  /** Customizable optional pointer **/
+  const void *handle;
+} mpudev_ctx_t;
+
 struct mpu9250_data {
 	int16_t accel_x;
 	int16_t accel_y;
@@ -37,6 +57,7 @@ struct mpu9250_data {
 	uint8_t magn_st2;
 #endif
 
+	mpudev_ctx_t *ctx;
 #ifdef CONFIG_MPU9250_TRIGGER
 	const struct device *dev;
 	struct gpio_callback gpio_cb;
@@ -56,7 +77,12 @@ struct mpu9250_data {
 };
 
 struct mpu9250_config {
-	const struct i2c_dt_spec i2c;
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+	struct spi_dt_spec spi;
+#endif
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+	struct i2c_dt_spec i2c;
+#endif
 	uint8_t gyro_sr_div;
 	uint8_t gyro_dlpf;
 	uint8_t gyro_fs;
@@ -66,6 +92,15 @@ struct mpu9250_config {
 	const struct gpio_dt_spec int_pin;
 #endif /* CONFIG_MPU9250_TRIGGER */
 };
+
+int mpu9250_i2c_init(const struct device *dev);
+int mpu9250_spi_init(const struct device *dev);
+
+int mpu9250_read_byte(const mpudev_ctx_t *ctx, uint8_t reg_addr, uint8_t *value);
+int mpu9250_write_byte(const mpudev_ctx_t *ctx, uint8_t reg_addr, uint8_t value);
+int mpu9250_update_byte(const mpudev_ctx_t *ctx,
+				      uint8_t reg_addr, uint8_t mask,
+				      uint8_t value);
 
 #ifdef CONFIG_MPU9250_TRIGGER
 int mpu9250_trigger_set(const struct device *dev,

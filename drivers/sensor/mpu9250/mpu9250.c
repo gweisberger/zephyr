@@ -20,7 +20,7 @@ LOG_MODULE_REGISTER(MPU9250, CONFIG_SENSOR_LOG_LEVEL);
 
 
 #define MPU9250_REG_CHIP_ID		0x75
-#define MPU9250_CHIP_ID			0x71
+#define MPU9250_CHIP_ID			0x73
 
 #define MPU9250_REG_SR_DIV		0x19
 
@@ -190,13 +190,13 @@ static int mpu9250_sample_fetch(const struct device *dev,
 				enum sensor_channel chan)
 {
 	struct mpu9250_data *drv_data = dev->data;
-	const struct mpu9250_config *cfg = dev->config;
 	int16_t buf[MPU9250_READ_BUF_SIZE];
 	int ret;
 
-	ret = i2c_burst_read_dt(&cfg->i2c,
-				MPU9250_REG_DATA_START, (uint8_t *)buf,
-				sizeof(buf));
+	ret = drv_data->ctx->read_reg(dev, MPU9250_REG_DATA_START, (uint8_t *)buf, sizeof(buf));
+	// ret = i2c_burst_read_dt(&cfg->i2c,
+	// 			MPU9250_REG_DATA_START, (uint8_t *)buf,
+	// 			sizeof(buf));
 	if (ret < 0) {
 		LOG_ERR("Failed to read data sample.");
 		return ret;
@@ -233,6 +233,60 @@ static const uint16_t mpu9250_gyro_sensitivity_x10[] = {
 	1310, 655, 328, 164
 };
 
+static int mpu9250_init_interface(const struct device *dev)
+{
+	int res;
+
+#if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
+	res = mpu9250_spi_init(dev);
+	if (res) {
+		return res;
+	}
+#elif DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
+	res = mpu9250_i2c_init(dev);
+	if (res) {
+		return res;
+	}
+#else
+#error "BUS MACRO NOT DEFINED IN DTS"
+#endif
+
+	return 0;
+}
+
+
+int mpu9250_read_byte(const mpudev_ctx_t *ctx, uint8_t reg_addr, uint8_t *value)
+{
+	return ctx->read_reg(ctx->handle, reg_addr, value, 1);
+}
+
+int mpu9250_write_byte(const mpudev_ctx_t *ctx, uint8_t reg_addr, uint8_t value)
+{
+	return ctx->write_reg(ctx->handle, reg_addr, &value, 1);
+}
+
+int mpu9250_update_byte(const mpudev_ctx_t *ctx,
+				      uint8_t reg_addr, uint8_t mask,
+				      uint8_t value)
+{
+	uint8_t old_value, new_value;
+	int rc;
+
+	rc = mpu9250_read_byte(ctx, reg_addr, &old_value);
+	if (rc != 0) {
+		return rc;
+	}
+
+	new_value = (old_value & ~mask) | (value & mask);
+	if (new_value == old_value) {
+		return 0;
+	}
+
+	return mpu9250_write_byte(ctx, reg_addr, new_value);
+}
+
+
+
 static int mpu9250_init(const struct device *dev)
 {
 	struct mpu9250_data *drv_data = dev->data;
@@ -240,13 +294,15 @@ static int mpu9250_init(const struct device *dev)
 	uint8_t id;
 	int ret;
 
-	if (!device_is_ready(cfg->i2c.bus)) {
-		LOG_ERR("I2C dev %s not ready", cfg->i2c.bus->name);
-		return -ENODEV;
+	ret = mpu9250_init_interface(dev);
+	if (ret < 0)
+	{
+		return -EINVAL;
 	}
 
 	/* check chip ID */
-	ret = i2c_reg_read_byte_dt(&cfg->i2c, MPU9250_REG_CHIP_ID, &id);
+	ret = mpu9250_read_byte(drv_data->ctx, MPU9250_REG_CHIP_ID, &id);
+	// ret = i2c_reg_read_byte_dt(&cfg->i2c, MPU9250_REG_CHIP_ID, &id);
 	if (ret < 0) {
 		LOG_ERR("Failed to read chip ID.");
 		return ret;
@@ -258,9 +314,10 @@ static int mpu9250_init(const struct device *dev)
 	}
 
 	/* wake up chip */
-	ret = i2c_reg_update_byte_dt(&cfg->i2c,
-				     MPU9250_REG_PWR_MGMT1,
-				     MPU9250_SLEEP_EN, 0);
+	ret = mpu9250_update_byte(drv_data->ctx, MPU9250_REG_PWR_MGMT1, MPU9250_SLEEP_EN, 0);
+	// ret = i2c_reg_update_byte_dt(&cfg->i2c,
+	// 			     MPU9250_REG_PWR_MGMT1,
+	// 			     MPU9250_SLEEP_EN, 0);
 	if (ret < 0) {
 		LOG_ERR("Failed to wake up chip.");
 		return ret;
@@ -271,8 +328,9 @@ static int mpu9250_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_ACCEL_CFG,
-				    cfg->accel_fs << MPU9250_ACCEL_FS_SHIFT);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_ACCEL_CFG, cfg->accel_fs << MPU9250_ACCEL_FS_SHIFT);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_ACCEL_CFG,
+	// 			    cfg->accel_fs << MPU9250_ACCEL_FS_SHIFT);
 	if (ret < 0) {
 		LOG_ERR("Failed to write accel full-scale range.");
 		return ret;
@@ -283,9 +341,10 @@ static int mpu9250_init(const struct device *dev)
 		LOG_ERR("Gyro FS is too big: %d", cfg->accel_fs);
 		return -EINVAL;
 	}
-
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_GYRO_CFG,
-				    cfg->gyro_fs << MPU9250_GYRO_FS_SHIFT);
+	
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_GYRO_CFG, cfg->gyro_fs << MPU9250_GYRO_FS_SHIFT);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_GYRO_CFG,
+	// 			    cfg->gyro_fs << MPU9250_GYRO_FS_SHIFT);
 	if (ret < 0) {
 		LOG_ERR("Failed to write gyro full-scale range.");
 		return ret;
@@ -296,8 +355,9 @@ static int mpu9250_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_CONFIG,
-				    cfg->gyro_dlpf);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_CONFIG, cfg->gyro_dlpf);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_CONFIG,
+	// 			    cfg->gyro_dlpf);
 	if (ret < 0) {
 		LOG_ERR("Failed to write gyro digital LPF settings.");
 		return ret;
@@ -308,15 +368,17 @@ static int mpu9250_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_ACCEL_CFG2,
-				    cfg->gyro_dlpf);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_ACCEL_CFG2, cfg->gyro_dlpf);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_ACCEL_CFG2,
+	// 			    cfg->gyro_dlpf);
 	if (ret < 0) {
 		LOG_ERR("Failed to write accel digital LPF settings.");
 		return ret;
 	}
 
-	ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_SR_DIV,
-				    cfg->gyro_sr_div);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_SR_DIV, cfg->gyro_sr_div);
+	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_SR_DIV,
+	// 			    cfg->gyro_sr_div);
 	if (ret < 0) {
 		LOG_ERR("Failed to write gyro ODR divider.");
 		return ret;
@@ -344,11 +406,18 @@ static int mpu9250_init(const struct device *dev)
 	return 0;
 }
 
+#define MPU9250_SPI(inst)                                                                           \
+	(.spi = SPI_DT_SPEC_INST_GET(                                                              \
+		 0, SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8), 0),)
+
+#define MPU9250_I2C(inst) (.i2c = I2C_DT_SPEC_INST_GET(inst),)
+
 
 #define INIT_MPU9250_INST(inst)						\
 	static struct mpu9250_data mpu9250_data_##inst;			\
 	static const struct mpu9250_config mpu9250_cfg_##inst = {	\
-	.i2c = I2C_DT_SPEC_INST_GET(inst),				\
+	COND_CODE_1(DT_INST_ON_BUS(inst, i2c), MPU9250_I2C(inst), ())			\
+	COND_CODE_1(DT_INST_ON_BUS(inst, spi), MPU9250_SPI(inst), ())			\
 	.gyro_sr_div = DT_INST_PROP(inst, gyro_sr_div),			\
 	.gyro_dlpf = DT_INST_ENUM_IDX(inst, gyro_dlpf),			\
 	.gyro_fs = DT_INST_ENUM_IDX(inst, gyro_fs),			\
