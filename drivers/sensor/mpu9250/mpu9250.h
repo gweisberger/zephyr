@@ -11,6 +11,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 
@@ -77,6 +78,11 @@ struct mpu9250_data {
 };
 
 struct mpu9250_config {
+
+#ifdef CONFIG_MPU9250_TRIGGER
+	const struct gpio_dt_spec int_pin;
+#endif /* CONFIG_MPU9250_TRIGGER */
+
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
 	struct spi_dt_spec spi;
 #endif
@@ -88,9 +94,7 @@ struct mpu9250_config {
 	uint8_t gyro_fs;
 	uint8_t accel_fs;
 	uint8_t accel_dlpf;
-#ifdef CONFIG_MPU9250_TRIGGER
-	const struct gpio_dt_spec int_pin;
-#endif /* CONFIG_MPU9250_TRIGGER */
+
 };
 
 int mpu9250_i2c_init(const struct device *dev);

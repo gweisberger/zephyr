@@ -5,7 +5,7 @@
 
 menuconfig MPU9250
 	bool "MPU9250 Nine-Axis Motion Tracking Device"
-	depends on I2C
+	depends on I2C || SPI
 	help
 	  Enable driver for MPU9250 I2C-based nine-axis motion tracking device.
 

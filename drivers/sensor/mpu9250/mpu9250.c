@@ -192,8 +192,17 @@ static int mpu9250_sample_fetch(const struct device *dev,
 	struct mpu9250_data *drv_data = dev->data;
 	int16_t buf[MPU9250_READ_BUF_SIZE];
 	int ret;
+	uint32_t read_size;
+	if (chan == SENSOR_CHAN_ACCEL_XYZ)
+	{
+		read_size = 3 * sizeof(int16_t);
+	}
+	else
+	{
+		read_size = sizeof(buf);
+	}
 
-	ret = drv_data->ctx->read_reg(dev, MPU9250_REG_DATA_START, (uint8_t *)buf, sizeof(buf));
+	ret = drv_data->ctx->read_reg(dev, MPU9250_REG_DATA_START, (uint8_t *)buf, read_size);
 	// ret = i2c_burst_read_dt(&cfg->i2c,
 	// 			MPU9250_REG_DATA_START, (uint8_t *)buf,
 	// 			sizeof(buf));
@@ -205,6 +214,10 @@ static int mpu9250_sample_fetch(const struct device *dev,
 	drv_data->accel_x = sys_be16_to_cpu(buf[0]);
 	drv_data->accel_y = sys_be16_to_cpu(buf[1]);
 	drv_data->accel_z = sys_be16_to_cpu(buf[2]);
+	if (chan == SENSOR_CHAN_ACCEL_XYZ)
+	{
+		return 0;
+	}
 	drv_data->temp = sys_be16_to_cpu(buf[3]);
 	drv_data->gyro_x = sys_be16_to_cpu(buf[4]);
 	drv_data->gyro_y = sys_be16_to_cpu(buf[5]);
@@ -309,7 +322,7 @@ static int mpu9250_init(const struct device *dev)
 	}
 
 	if (id != MPU9250_CHIP_ID) {
-		LOG_ERR("Invalid chip ID.");
+		LOG_ERR("Invalid chip ID. 0x%02x", id);
 		return -ENOTSUP;
 	}
 
@@ -408,7 +421,7 @@ static int mpu9250_init(const struct device *dev)
 
 #define MPU9250_SPI(inst)                                                                           \
 	(.spi = SPI_DT_SPEC_INST_GET(                                                              \
-		 0, SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8), 0),)
+		 inst, SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8), 0),)
 
 #define MPU9250_I2C(inst) (.i2c = I2C_DT_SPEC_INST_GET(inst),)
 
