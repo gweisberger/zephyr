@@ -381,7 +381,7 @@ static int mpu9250_init(const struct device *dev)
 		return -EINVAL;
 	}
 
-	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_ACCEL_CFG2, cfg->gyro_dlpf);
+	ret = mpu9250_write_byte(drv_data->ctx, MPU9250_REG_ACCEL_CFG2, cfg->accel_dlpf);
 	// ret = i2c_reg_write_byte_dt(&cfg->i2c, MPU9250_REG_ACCEL_CFG2,
 	// 			    cfg->gyro_dlpf);
 	if (ret < 0) {
